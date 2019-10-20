@@ -92,7 +92,7 @@ void IoTT_LEDCmdList::updateLEDs()
 
 void IoTT_LEDCmdList::loadCmdListJSON(JsonObject thisObj)
 {
-	Serial.println("Loading Cmd Seq");
+//	Serial.println("Loading Cmd Seq");
 	upToVal = thisObj["Val"];
 	if (thisObj.containsKey("ColOn"))
 		colOn = parentObj->parentObj->getColorByName(thisObj["ColOn"]);
@@ -493,7 +493,7 @@ void IoTT_LEDHandler::updateLEDs()
 void IoTT_LEDHandler::loadLEDHandlerJSON(JsonObject thisObj)
 {
 	freeObjects();
-	Serial.println("Loading LED Object");
+//	Serial.println("Loading LED Object");
 	if (thisObj.containsKey("LEDNums"))
 	{
 		JsonArray LEDNums = thisObj["LEDNums"];
