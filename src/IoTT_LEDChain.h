@@ -85,6 +85,8 @@ class IoTT_LEDHandler
 		uint32_t blinkTimer = millis();
 		bool     blinkStatus = false;
 		float_t  faderValue = 0;
+		uint16_t lastValue = 0;
+		uint32_t lastActivity = 0;
 };
 
 class IoTT_ledChain
@@ -106,7 +108,7 @@ class IoTT_ledChain
 		void updateLEDs();
 
 		uint16_t chainLength = 0;
-		CRGB * ledChain;
+		CRGB * ledChain = NULL;
 
 		IoTT_ColorDefinitions** colorDefinitionList = NULL;
 		uint16_t colorDefListLen = 0;

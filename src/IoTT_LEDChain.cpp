@@ -231,7 +231,7 @@ void IoTT_LEDHandler::updateChainData(IoTT_LEDCmdList * cmdDef, IoTT_LEDCmdList 
 		
 		switch (cmdDef->transType)
 		{
-			Serial.println(cmdDef->transType);
+//			Serial.println(cmdDef->transType);
 			case direct: //just go to the next value
 				currentColor = targetCol;
 				break;
@@ -309,6 +309,11 @@ void IoTT_LEDHandler::updateBlockDet()
 	IoTT_LEDCmdList * cmdDef = NULL;
 	//get target color based on status
 	uint8_t blockStatus = getBDStatus(ctrlAddrList[0]);
+	if (lastValue != blockStatus)
+	{
+		lastValue = blockStatus;
+		blinkTimer = millis();
+	}
     for (int i = 0; i < cmdListLen; i++)
     {
 		switch (blockStatus)
@@ -330,6 +335,11 @@ void IoTT_LEDHandler::updateSwitchPos()
 //	Serial.printf("Checking Swi %i Stat %i\n", ctrlAddrList[0], swiStatus);
 	int16_t nextVal = -1;
 	int16_t nextInd = -1;
+	if (lastValue != swiStatus)
+	{
+		lastValue = swiStatus;
+		blinkTimer = millis();
+	}
 	for (int i = 0; i < cmdListLen; i++)
 	{
 //		Serial.printf("Testing Value %i Status %i in Loop %i\n", cmdList[i]->upToVal, swiStatus, i);
@@ -349,7 +359,68 @@ void IoTT_LEDHandler::updateSwitchPos()
 
 void IoTT_LEDHandler::updateSwSignalPos(bool isDynamic)
 {
-	
+	IoTT_LEDCmdList * cmdDef = NULL;
+	int16_t nextVal = -1;
+	int16_t nextInd = -1;
+	uint16_t swiStatus = 0;
+	uint8_t swiBitMask = 0x01;
+	uint8_t swiChgMask = 0;
+	if (isDynamic)
+	{
+		swiStatus = lastValue;
+		uint32_t lastAct = 0;
+		uint8_t dynSwi = 0;
+		for (int i = 0; i < ctrlAddrListLen; i++) //check for the latest activity
+		{
+			uint32_t hlpAct = getLastSwitchActivity(ctrlAddrList[i]);
+			if (hlpAct > lastAct)
+			{
+				dynSwi = i;
+				lastAct = hlpAct;
+			}
+		}
+		if (lastAct != 0) //we have activity
+		{
+			if (lastAct != lastActivity)
+			{
+				Serial.printf("Updating %i activity for Switch %i\n", dynSwi, ctrlAddrList[dynSwi]);
+				swiStatus = 2 * dynSwi;
+				if (((getSwiStatus(ctrlAddrList[dynSwi]) >> 4) & 0x02) > 0)
+					swiStatus++;
+				lastActivity = lastAct;
+			}
+		}
+	}
+	else
+	{
+		for (int i = 0; i < ctrlAddrListLen; i++)
+		{
+			if (((getSwiStatus(ctrlAddrList[i]) >> 4) & 0x02) > 0)
+				swiStatus |= swiBitMask;
+			swiBitMask <<= 1;
+		}
+	}
+	if (lastValue != swiStatus)
+	{
+		lastValue = swiStatus; //this is the static value
+		blinkTimer = millis();
+	}
+//	Serial.printf("Checking Swi %i Stat %i\n", ctrlAddrList[0], swiStatus);
+	for (int i = 0; i < cmdListLen; i++)
+	{
+//		Serial.printf("Testing Value %i Status %i in Loop %i\n", cmdList[i]->upToVal, swiStatus, i);
+		if ((swiStatus <= cmdList[i]->upToVal) && (swiStatus > nextVal))
+		{
+			nextInd = i;
+			nextVal = cmdList[i]->upToVal;
+		}
+	}
+	if (nextInd >= 0)
+	{
+//		Serial.printf("Updating Switch %i to Position %i Cmd %i \n", ctrlAddrList[0], swiStatus, nextInd);
+		cmdDef = cmdList[nextInd];
+		updateChainData(cmdDef);
+	}
 }
 
 void IoTT_LEDHandler::updateSignalPos()
@@ -358,6 +429,11 @@ void IoTT_LEDHandler::updateSignalPos()
 	IoTT_LEDCmdList * cmdDefLin = NULL;
 	uint16_t sigAddress = ctrlAddrList[0];
 	uint16_t sigAspect = getSignalAspect(ctrlAddrList[0]);
+	if (lastValue != sigAspect)
+	{
+		lastValue = sigAspect;
+		blinkTimer = millis();
+	}
 //    Serial.printf("Checking Signal %i to Aspect %i  \n", sigAddress, sigAspect);
 	int16_t nextVal = -1;
 	int16_t nextInd = -1;
@@ -394,6 +470,11 @@ void IoTT_LEDHandler::updateButtonPos()
 	uint16_t btnState = getButtonValue(btnNr);
 	int16_t nextVal = -1;
 	int16_t nextInd = -1;
+	if (lastValue != btnState)
+	{
+		lastValue = btnState;
+		blinkTimer = millis();
+	}
 	for (int i = 0; i < cmdListLen; i++)
 	{
 		if ((btnState <= cmdList[i]->upToVal) && (btnState > nextVal))
@@ -416,6 +497,11 @@ void IoTT_LEDHandler::updateAnalogValue()
 	IoTT_LEDCmdList * cmdDefLin = NULL;
 	uint16_t analogNr = ctrlAddrList[0];
 	uint16_t analogVal = getAnalogValue(analogNr);
+	if (lastValue != analogVal)
+	{
+		lastValue = analogVal;
+		blinkTimer = millis();
+	}
 	int16_t nextVal = -1;
 	int16_t nextInd = -1;
 	int16_t prevInd = -1;
@@ -451,6 +537,11 @@ void IoTT_LEDHandler::updatePowerStatus()
 	IoTT_LEDCmdList * cmdDef = NULL;
 	int16_t nextVal = -1;
 	int16_t nextInd = -1;
+	if (lastValue != getPowerStatus())
+	{
+		lastValue = getPowerStatus();
+		blinkTimer = millis();
+	}
 	for (int i = 0; i < cmdListLen; i++)
 	{
 		if ((getPowerStatus() <= cmdList[i]->upToVal) && (getPowerStatus() > nextVal))
@@ -598,7 +689,7 @@ void IoTT_ledChain::loadLEDChainJSON(DynamicJsonDocument doc)
           thisColorDefEntry->loadColDefJSON(LEDCols[i]);
           colorDefinitionList[i] = thisColorDefEntry;
         }
-        Serial.printf("%i colors loaded\n", colorDefListLen);
+//        Serial.printf("%i colors loaded\n", colorDefListLen);
     }
 	Serial.println("Load LED Defs");
     if (doc.containsKey("LEDDefs"))
@@ -613,7 +704,7 @@ void IoTT_ledChain::loadLEDChainJSON(DynamicJsonDocument doc)
 			thisLEDHandlerEntry->loadLEDHandlerJSON(LEDDefs[i]);
 			LEDHandlerList[i] = thisLEDHandlerEntry;
 		}
-        Serial.printf("%i LED Defs loaded\n", LEDHandlerListLen);
+//        Serial.printf("%i LED Defs loaded\n", LEDHandlerListLen);
 	}
 	Serial.println("Load LED Defs Complete");
 }
