@@ -41,11 +41,11 @@ class IoTT_LEDCmdList
 	public:
 		IoTT_LEDHandler* parentObj = NULL;
 		uint16_t upToVal = 0;
-		IoTT_ColorDefinitions* colOn = NULL;
-		IoTT_ColorDefinitions* colOff = NULL;
-		uint8_t dispMode = 0;
-		uint16_t blinkRate;
-		uint8_t transType;
+		IoTT_ColorDefinitions** colOn = NULL;
+		IoTT_ColorDefinitions** colOff = NULL;
+		uint8_t * dispMode = NULL;
+		uint16_t * blinkRate = NULL;
+		uint8_t * transType = NULL;
 	
 };
 
@@ -68,6 +68,7 @@ class IoTT_LEDHandler
 		void updatePowerStatus();
 		void updateConstantLED();
 		void updateChainData(IoTT_LEDCmdList * cmdDef, IoTT_LEDCmdList * cmdDefLin = NULL, uint8_t distance = 0);
+		void updateChainDataForColor(uint8_t colorNr, IoTT_LEDCmdList * cmdDef, IoTT_LEDCmdList * cmdDefLin, uint8_t distance);
 	public:
 		IoTT_ledChain* parentObj = NULL;
 	public:
@@ -75,12 +76,13 @@ class IoTT_LEDHandler
 		uint16_t cmdListLen = 0;
 		uint16_t * ledAddrList = NULL;
 		uint8_t ledAddrListLen = 0;
+		bool multiColor = false;
 		uint16_t * ctrlAddrList = NULL;
 		uint8_t ctrlAddrListLen = 0;
 		uint8_t ctrlSource = 0;
 		uint8_t displType = 0;
 
-		CHSV currentColor = CHSV(0,0,0);
+		CHSV * currentColor = NULL; //CHSV(0,0,0);
 		uint16_t blinkInterval = 500;
 		uint32_t blinkTimer = millis();
 		bool     blinkStatus = false;

@@ -65,6 +65,7 @@ void IoTT_ColorDefinitions::loadColDefJSON(JsonObject thisObj)
         byte HSV1 = (byte)thisObj["HSVVal"][1];
         byte HSV2 = (byte)thisObj["HSVVal"][2];
         HSVVal = CHSV(HSV0, HSV1, HSV2);
+        hsv2rgb_raw(HSVVal, RGBVal);
     }
     else if (thisObj.containsKey("RGBVal"))
     {
@@ -74,6 +75,11 @@ void IoTT_ColorDefinitions::loadColDefJSON(JsonObject thisObj)
         RGBVal = CRGB(RGB0, RGB1, RGB2);
         HSVVal = rgb2hsv_approximate(RGBVal); //FastLED function
     }
+    else
+    {
+		RGBVal = CRGB(0,0,0);
+        HSVVal = rgb2hsv_approximate(RGBVal); //FastLED function
+	}
 }
 
 //******************************************************************************************************************************************************************
@@ -94,20 +100,57 @@ void IoTT_LEDCmdList::loadCmdListJSON(JsonObject thisObj)
 {
 //	Serial.println("Loading Cmd Seq");
 	upToVal = thisObj["Val"];
-	if (thisObj.containsKey("ColOn"))
-		colOn = parentObj->parentObj->getColorByName(thisObj["ColOn"]);
+	if (parentObj->multiColor)
+	{
+		colOn = (IoTT_ColorDefinitions**) realloc (colOn, parentObj->ledAddrListLen * sizeof(IoTT_ColorDefinitions*));
+		colOff = (IoTT_ColorDefinitions**) realloc (colOff, parentObj->ledAddrListLen * sizeof(IoTT_ColorDefinitions*));
+		JsonArray colOnArray = thisObj["ColOn"];
+		JsonArray colOffArray = thisObj["ColOff"];
+		for (int i=0; i<parentObj->ledAddrListLen;i++)
+		{
+			colOn[i] = parentObj->parentObj->getColorByName(colOnArray[i]);
+			colOff[i] = parentObj->parentObj->getColorByName(colOffArray[i]);
+		}
+		
+	}
 	else
-		colOn = NULL;
-	if (thisObj.containsKey("ColOff"))
-		colOff = parentObj->parentObj->getColorByName(thisObj["ColOff"]);
-	else
-		colOff = NULL;
-	dispMode = getColorModeByName(thisObj["Mode"]);
-	blinkRate = thisObj["Rate"];
-	transType = getTransitionTypeByName(thisObj["Transition"]);
+	{
+		colOn = (IoTT_ColorDefinitions**) realloc (colOn, sizeof(IoTT_ColorDefinitions*));
+		colOff = (IoTT_ColorDefinitions**) realloc (colOff, sizeof(IoTT_ColorDefinitions*));
+		if (thisObj.containsKey("ColOn"))
+			colOn[0] = parentObj->parentObj->getColorByName(thisObj["ColOn"]);
+		else
+			colOn[0] = NULL;
+		if (thisObj.containsKey("ColOff"))
+			colOff[0] = parentObj->parentObj->getColorByName(thisObj["ColOff"]);
+		else
+			colOff[0] = NULL;
+	}
+	
+	dispMode = (uint8_t*) realloc (dispMode, parentObj->ledAddrListLen * sizeof(uint8_t));
+	blinkRate = (uint16_t*) realloc (blinkRate, parentObj->ledAddrListLen * sizeof(uint16_t));
+	transType = (uint8_t*) realloc (transType, parentObj->ledAddrListLen * sizeof(uint8_t));
+	JsonArray dispModeArray = thisObj["Mode"];
+	JsonArray blinkRateArray = thisObj["Rate"];
+	JsonArray transTypeArray = thisObj["Transition"];
+	for (uint16_t i = 0; i < parentObj->ledAddrListLen; i++)
+	{
+		if (dispModeArray.isNull())
+			dispMode[i] = getColorModeByName(thisObj["Mode"]);
+		else
+			dispMode[i] = getColorModeByName(dispModeArray[i]);
+
+		if (blinkRateArray.isNull())
+			blinkRate[i] = thisObj["Rate"];
+		else
+			blinkRate[i] = blinkRateArray[i];
+
+		if (transTypeArray.isNull())
+			transType[i] = getTransitionTypeByName(thisObj["Transition"]);
+		else
+			transType[i] = getTransitionTypeByName(transTypeArray[i]);
+	}
 }
-
-
 
 //******************************************************************************************************************************************************************
 IoTT_LEDHandler::IoTT_LEDHandler()
@@ -135,16 +178,16 @@ void IoTT_LEDHandler::updateLocalBlinkValues()
 }
 
 
-void IoTT_LEDHandler::updateChainData(IoTT_LEDCmdList * cmdDef, IoTT_LEDCmdList * cmdDefLin, uint8_t distance)
+void IoTT_LEDHandler::updateChainDataForColor(uint8_t colorNr, IoTT_LEDCmdList * cmdDef, IoTT_LEDCmdList * cmdDefLin, uint8_t distance)
 {
 	
 	CHSV targetCol, targetColLin;
 	bool flipBlink = false;
 	bool useGlobal = true;
-	switch (cmdDef->dispMode)
+	switch (cmdDef->dispMode[colorNr])
 	{
 		case constlevel: 
-			targetCol = (cmdDef->colOn != NULL) ? cmdDef->colOn->HSVVal : CHSV(0,0,0); 
+			targetCol = (cmdDef->colOn[colorNr] != NULL) ? cmdDef->colOn[colorNr]->HSVVal : CHSV(0,0,0); 
 			break;
 		case globalrampdown: 
 		case globalblinkneg: 
@@ -153,15 +196,15 @@ void IoTT_LEDHandler::updateChainData(IoTT_LEDCmdList * cmdDef, IoTT_LEDCmdList 
 		case globalblinkpos: 
 			if (parentObj->getBlinkStatus() ^ flipBlink)
 			{
-				targetCol = (cmdDef->colOn != NULL) ? cmdDef->colOn->HSVVal : CHSV(0,0,0); 
+				targetCol = (cmdDef->colOn[colorNr] != NULL) ? cmdDef->colOn[colorNr]->HSVVal : CHSV(0,0,0); 
 				if (cmdDefLin != NULL)
-					targetColLin = (cmdDefLin->colOn != NULL) ? cmdDefLin->colOn->HSVVal : CHSV(0,0,0); 
+					targetColLin = (cmdDefLin->colOn[colorNr] != NULL) ? cmdDefLin->colOn[colorNr]->HSVVal : CHSV(0,0,0); 
 			}
 			else 
 			{
-				targetCol = (cmdDef->colOff != NULL) ? cmdDef->colOff->HSVVal : CHSV(0,0,0); 
+				targetCol = (cmdDef->colOff[0] != NULL) ? cmdDef->colOff[0]->HSVVal : CHSV(0,0,0); 
 				if (cmdDefLin != NULL)
-					targetColLin = (cmdDefLin->colOff != NULL) ? cmdDefLin->colOff->HSVVal : CHSV(0,0,0); 
+					targetColLin = (cmdDefLin->colOff[colorNr] != NULL) ? cmdDefLin->colOff[colorNr]->HSVVal : CHSV(0,0,0); 
 			}
 			break;
 		case localrampdown: 
@@ -174,7 +217,7 @@ void IoTT_LEDHandler::updateChainData(IoTT_LEDCmdList * cmdDef, IoTT_LEDCmdList 
 			if (millis() > blinkTimer)
 			{
 				blinkStatus = !blinkStatus;
-				blinkTimer += cmdDef->blinkRate;
+				blinkTimer += cmdDef->blinkRate[colorNr];
 				timeElapsed -= blinkInterval;
 				if (millis() > blinkTimer) //exception correction in case something is not initialized.
 				{
@@ -186,15 +229,15 @@ void IoTT_LEDHandler::updateChainData(IoTT_LEDCmdList * cmdDef, IoTT_LEDCmdList 
 			
 			if (blinkStatus ^ flipBlink) 
 			{
-				targetCol = (cmdDef->colOn != NULL) ? cmdDef->colOn->HSVVal : CHSV(0,0,0); 
+				targetCol = (cmdDef->colOn[colorNr] != NULL) ? cmdDef->colOn[colorNr]->HSVVal : CHSV(0,0,0); 
 				if (cmdDefLin != NULL)
-					targetColLin = (cmdDefLin->colOn != NULL) ? cmdDefLin->colOn->HSVVal : CHSV(0,0,0); 
+					targetColLin = (cmdDefLin->colOn[colorNr] != NULL) ? cmdDefLin->colOn[colorNr]->HSVVal : CHSV(0,0,0); 
 			}
 			else 
 			{
-				targetCol = (cmdDef->colOff != NULL) ? cmdDef->colOff->HSVVal : CHSV(0,0,0); 
+				targetCol = (cmdDef->colOff[colorNr] != NULL) ? cmdDef->colOff[colorNr]->HSVVal : CHSV(0,0,0); 
 				if (cmdDefLin != NULL)
-					targetColLin = (cmdDefLin->colOff != NULL) ? cmdDefLin->colOff->HSVVal : CHSV(0,0,0); 
+					targetColLin = (cmdDefLin->colOff[colorNr] != NULL) ? cmdDefLin->colOff[colorNr]->HSVVal : CHSV(0,0,0); 
 			}
 			break;
 	}
@@ -207,55 +250,55 @@ void IoTT_LEDHandler::updateChainData(IoTT_LEDCmdList * cmdDef, IoTT_LEDCmdList 
 	
 	targetCol.v = round(targetCol.v * parentObj->getBrightness()); //this is the final target color, now we calculate the next step on the way there, if needed
 
-	if ((targetCol.h != currentColor.h) || (targetCol.s != currentColor.s) || (targetCol.v != currentColor.v))
+	if ((targetCol.h != currentColor[colorNr].h) || (targetCol.s != currentColor[colorNr].s) || (targetCol.v != currentColor[colorNr].v))
 	{
 		uint16_t blinkPeriod;
 		if (useGlobal)
 			blinkPeriod = parentObj->blinkInterval;
 		else
-			blinkPeriod = cmdDef->blinkRate;
+			blinkPeriod = cmdDef->blinkRate[colorNr];
 		uint16_t rateH;
 		if (blinkPeriod > 0)
 			rateH = round((255/(float)blinkPeriod)*(1000/(float)parentObj->ledUpdateInterval)); //val_units per LED refresh interval at given blink period
 		else
 			rateH = 255; //immediate change, period 0
 //		Serial.printf("Period: %i Rate %i\n", blinkPeriod, rateH);
-		int16_t hueChange = targetCol.h - currentColor.h;
-		int16_t satChange = targetCol.s - currentColor.s;
+		int16_t hueChange = targetCol.h - currentColor[colorNr].h;
+		int16_t satChange = targetCol.s - currentColor[colorNr].s;
 		float satRatio = satChange / hueChange;
-		int16_t valChange = targetCol.v - currentColor.v;
+		int16_t valChange = targetCol.v - currentColor[colorNr].v;
 		float valRatio = valChange / hueChange;
 
 		int newTarget_h = targetCol.h;
 		int newTarget_v = targetCol.v;
 		
-		switch (cmdDef->transType)
+		switch (cmdDef->transType[colorNr])
 		{
-//			Serial.println(cmdDef->transType);
+//			Serial.println(cmdDef->transType[colorNr]);
 			case direct: //just go to the next value
-				currentColor = targetCol;
+				currentColor[colorNr] = targetCol;
 				break;
 			case soft: //reduce brightness, change hue and saturation, increase brightness
 				rateH *= 4;
 //			    Serial.printf("Setting Soft h %i s %i v %i to h %i s %i v %i rate %i\n", currentColor.h, currentColor.s, currentColor.v, targetCol.h, targetCol.s, targetCol.v, rateH); 
-				if (currentColor.h != targetCol.h)
+				if (currentColor[colorNr].h != targetCol.h)
 				{
-					if (currentColor.v > rateH)
-						currentColor.v -= rateH;
+					if (currentColor[colorNr].v > rateH)
+						currentColor[colorNr].v -= rateH;
 					else
-						currentColor.v = 0;
-					if (currentColor.v == 0)
+						currentColor[colorNr].v = 0;
+					if (currentColor[colorNr].v == 0)
 					{
-						currentColor.h = targetCol.h;
-						currentColor.s = targetCol.s;
+						currentColor[colorNr].h = targetCol.h;
+						currentColor[colorNr].s = targetCol.s;
 					}
 				}
 				else
 				{
-					if ((currentColor.v + rateH) < targetCol.v)
-						currentColor.v += rateH;
+					if ((currentColor[colorNr].v + rateH) < targetCol.v)
+						currentColor[colorNr].v += rateH;
 					else
-						currentColor.v = targetCol.v;
+						currentColor[colorNr].v = targetCol.v;
 				}
 				break;
 			case merge: //change hue, saturation, brightness simultaneously
@@ -278,30 +321,42 @@ void IoTT_LEDHandler::updateChainData(IoTT_LEDCmdList * cmdDef, IoTT_LEDCmdList 
 						break;
 				}
 				if (myDeltaH >= 0)
-					if ((currentColor.h + rateH) > targetCol.h)
-						currentColor.h = targetCol.h;
+					if ((currentColor[colorNr].h + rateH) > targetCol.h)
+						currentColor[colorNr].h = targetCol.h;
 					else
-						currentColor.h += rateH;
+						currentColor[colorNr].h += rateH;
 				else
-					if ((currentColor.h - rateH) < targetCol.h)
-						currentColor.h = targetCol.h;
+					if ((currentColor[colorNr].h - rateH) < targetCol.h)
+						currentColor[colorNr].h = targetCol.h;
 					else
-						currentColor.h -= rateH;
-				if (currentColor.h == targetCol.h)
+						currentColor[colorNr].h -= rateH;
+				if (currentColor[colorNr].h == targetCol.h)
 				{
-					currentColor.s = targetCol.s;
-					currentColor.v = targetCol.v;
+					currentColor[colorNr].s = targetCol.s;
+					currentColor[colorNr].v = targetCol.v;
 				}
 				else
 				{
-					currentColor.s = currentColor.s + round(myDeltaH * satRatio);
-					currentColor.v = currentColor.v + round(myDeltaH * valRatio);
+					currentColor[colorNr].s = currentColor[colorNr].s + round(myDeltaH * satRatio);
+					currentColor[colorNr].v = currentColor[colorNr].v + round(myDeltaH * valRatio);
 				}
 				break;
 		}
-		for (int i = 0; i < ledAddrListLen; i++)
-			parentObj->setCurrColHSV(ledAddrList[i], currentColor);
+		if (multiColor)
+			parentObj->setCurrColHSV(ledAddrList[colorNr], currentColor[colorNr]);
+		else
+			for (int i = 0; i < ledAddrListLen; i++)
+				parentObj->setCurrColHSV(ledAddrList[i], currentColor[colorNr]);
 	}
+}
+
+void IoTT_LEDHandler::updateChainData(IoTT_LEDCmdList * cmdDef, IoTT_LEDCmdList * cmdDefLin, uint8_t distance)
+{
+	if (multiColor)
+		for (uint8_t i = 0; i < ledAddrListLen; i++)
+			updateChainDataForColor(i, cmdDef, cmdDefLin, distance);
+	else
+		updateChainDataForColor(0, cmdDef, cmdDefLin, distance);
 }
 
 void IoTT_LEDHandler::updateBlockDet()
@@ -590,9 +645,17 @@ void IoTT_LEDHandler::loadLEDHandlerJSON(JsonObject thisObj)
 		JsonArray LEDNums = thisObj["LEDNums"];
 		ledAddrListLen = LEDNums.size();
 		ledAddrList = (uint16_t*) realloc (ledAddrList, ledAddrListLen * sizeof(uint16_t));
+		currentColor = (CHSV*) realloc (currentColor, ledAddrListLen * sizeof(CHSV));
 		for (int i=0; i<ledAddrListLen;i++)
+		{
 			ledAddrList[i] = LEDNums[i];
+			currentColor[i] = CHSV(0,0,0);
+		}
 	}
+	if (thisObj.containsKey("MultiColor"))
+		multiColor = thisObj["MultiColor"];
+	else
+		multiColor = false;
 	if (thisObj.containsKey("CtrlAddr"))
 	{
 		JsonArray CtrlAddr = thisObj["CtrlAddr"];
@@ -645,7 +708,8 @@ void IoTT_ledChain::freeObjects()
 {
 	if (colorDefListLen > 0)
 	{
-		for (uint16_t i = 0; i < colorDefListLen; i++)
+//		for (uint16_t i = 0; i < colorDefListLen; i++)
+		for (uint16_t i = 0; i < (sizeof(colorDefinitionList) / sizeof(colorDefinitionList[0])); i++)
 			delete colorDefinitionList[i];
 		colorDefListLen = 0;
 		free(colorDefinitionList);
@@ -689,7 +753,6 @@ void IoTT_ledChain::loadLEDChainJSON(DynamicJsonDocument doc)
           thisColorDefEntry->loadColDefJSON(LEDCols[i]);
           colorDefinitionList[i] = thisColorDefEntry;
         }
-//        Serial.printf("%i colors loaded\n", colorDefListLen);
     }
 	Serial.println("Load LED Defs");
     if (doc.containsKey("LEDDefs"))
